@@ -31,10 +31,5 @@ work()->
 
 %% возвращает поток, работающий с db
 get_db()->
-	send_message(db_interface_thread,get_proc).
-
-% отсылка сообщения потоку с ожиданием и возвращением результата.
-send_message(Thread,Message)->
-	Thread!{self(),Message},
-	receive A -> A end.
+	lib:sendw(db_interface_thread,get_proc).
 
