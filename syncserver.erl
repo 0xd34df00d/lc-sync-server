@@ -1,10 +1,21 @@
 -module(syncserver).
--export([start/0],stop/0]).
+-export([start/0,stop/0]).
+-import(db_interface,[get_db/0]).
+-include("records.hrl").
 
 start()->
-	start_net,start_db.
-	
+	db_interface:init(),
+	net:start(fun login/1).
+
 stop()->
-	stop_net,stop_db.
+	stop_net,
+	get_db()!shutdown,
+	init:stop(0).
+
+login(Socket)->
+	not_implemented.
+
+running(Socket,User)->
+	not_implemented.
 
 
