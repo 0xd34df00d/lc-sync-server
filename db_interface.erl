@@ -1,5 +1,5 @@
 -module(db_interface).
--export([init/0,shutdown/0,get_db/0,work/0]).
+-export([init/0,shutdown/0,get_db/0,work/0,db_access/1]).
 
 init()->
 	W=register(db_interface_thread,spawn(?MODULE,work,[])),
@@ -32,4 +32,7 @@ work()->
 %% возвращает поток, работающий с db
 get_db()->
 	lib:sendw(db_interface_thread,get_proc).
+
+db_access(Q)->
+	lib:sendw(get_db(),Q).
 

@@ -39,6 +39,9 @@ records.hrl
 	erase_key #удаление данных пользователя по ключу
 	create_user
 	delete_user
+	list_keys
+	get_password
+	set_password
 
 Списки параметров для каждого действия пока не определены.
 
@@ -77,8 +80,6 @@ records.hrl
 (login) REGISTER username password
 	Регистрация пользователя. При успешной регистрации - переход в running, 
 	иначе - закрывает соединение.
-(login) UNREGISTER username password
-	Удаление пользователя. 
 (login) LOGIN username password
 	Авторизация клиента. Переводит поток сервера в состояние running в случае 
 	успеха, иначе - закрывает соединение.
@@ -96,6 +97,10 @@ records.hrl
 	Получить значение по ключу.
 (running) SET key version value
 	Запись значения по ключу.
+(running) UNREGISTER
+	Удаление пользователя. 
+(running) SETPASSWORD password
+	Смена пароля/ключа доступа.
 (running) DISCONNECT
 	Завершение сеанса.
 
