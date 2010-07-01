@@ -1,97 +1,95 @@
 -module(db_impl_mnesia).
--export([init/0,start/0,run/0]).
--include("records.hrl").
+-export([init/0,start/0,stop/0,db_access/1]).
 -define(PASSWORD_KEY,'PASSWORD').
+-define(PASSWORD_TABLE,'PASSWORDS').
 
 % запуск БД; возвращает поток, работающий с БД.
 start()->
-	mnesia:start(),
-	spawn(?MODULE,run,[]).
+	mnesia:start().
+
 % первичная инициализация БД
 init()-> 
-	mnesia:create_shema([node()]).
-	
-% формат сообщений:
-% {Отправитель,{действие,Пользователь,..<параметры>..}}
-% отправитель _обязательно_ уведомляется о результате дествия.
+	mnesia:create_schema([node()]).
 
-% поток работы с БД работает в этой функции.
-run()->
-	receive	
-		{Sender,{list,User}}->
-			Sender!db_list(User),
-			run();
-		{Sender,{set,User,Key,Value}}->
-			Sender!db_set(User,Key,Value),
-			run();
-		{Sender,{get,User,Key}}->
-			Sender!db_get(User,Key),
-			run();
-		{Sender,{erase_key,User,Key}}->
-			Sender!db_erase_key(User,Key),
-			run();
-		{Sender,{create_user,User,Password}}->
-			Sender!create_user(User,Password),
-			run();
-		{Sender,{delete_user,User}}->
-			Sender!delete_user(User),
-			run();
-		{Sender,{user_exists,User}}->
-			Sender!lists:member(User,mnesia:table_info(tables)),
-			run();
-		{Sender,{get_password,User}}->
-			Sender!get_password(User),
-			run();
-		{Sender,{set_password,User,Password}}->
-			Sender!set_password(User,Password),
-			run();
-		shutdown->
-			db_shutdown;
-		E-> error
+% останов
+stop()->
+	mnesia:stop().
+
+% доступ к БД.
+% {действие,Пользователь,..<параметры>..}
+db_access(P)->
+	case P of	
+		{list_keys,User}->				db_list_keys(list_to_atom(User));
+		{put,User,Key,Value}->			db_put(list_to_atom(User),Key,Value);
+		{set_uniq,User,Key,Value}->		db_set_uniq(list_to_atom(User),Key,Value);
+		{get,User,Key}->				db_get(list_to_atom(User),Key);
+		{erase_key,User,Key}->			db_erase_key(list_to_atom(User),Key);
+		{erase_record,User,Key,Value}->	db_erase_record(list_to_atom(User),Key,Value);
+		{create_user,User,Password}->	create_user(list_to_atom(User),Password);
+		{delete_user,User}->			delete_user(list_to_atom(User));
+		{user_exists,User}->			user_exists(list_to_atom(User));
+		{list_users}->					list_users();
+		{get_password,User}->			get_password(list_to_atom(User));
+		{set_password,User,Password}->	set_password(list_to_atom(User),Password);
+		E-> {unknown_command,E}
 	end.
 
-db_list(User)->
-	mnesia:all_keys(User).
+db_list_keys(User)->
+	{atomic,V}=mnesia:transaction(fun()-> mnesia:all_keys(User)end),
+	V.
 
-db_set(User,Key,Value)->
-	mnesia:transaction(
+db_put(User,Key,Value)->
+	{atomic,V}=mnesia:transaction(
+		fun()-> mnesia:write({User,Key,Value})end),
+	V.
+
+db_set_uniq(User,Key,Value)->
+	{atomic,V}=mnesia:transaction(
 		fun()-> 
-			mnesia:write(User,{Key,Value},write) 
-		end).
+			mnesia:delete({User,Key}),
+			mnesia:write({User,Key,Value})
+		end),
+	V.
 
 db_get(User,Key)->
-	mnesia:read(User,Key). %будет ли работать без транкзакции?
-%можно так:
-%	T=self(),
-%	mnesia:transaction(
-%		fun()-> 
-%			T!mnesia:read(User,Key)
-%		end),
-%	receive A->A end.
+	{atomic,V}=mnesia:transaction(
+		fun()-> mnesia:read({User,Key})end),
+	lists:map(fun({_,_,D})-> D end,V).
 
 get_password(User)->
-	[#db_value{data=Data}] = db_get(User,?PASSWORD_KEY), Data.
+	[Data] = db_get(User,?PASSWORD_KEY), Data.
 
 set_password(User,Password)->
-	db_set(User,
-		?PASSWORD_KEY, 
-		#db_value{version=null,
-			description="User password/key",
-			data=Password}).
+	{atomic,V}=mnesia:transaction(
+		fun()-> 
+			mnesia:delete({User,?PASSWORD_KEY}),
+			mnesia:write({User,?PASSWORD_KEY,Password})
+		end),
+	V.
 	
 db_erase_key(User,Key)->
-	mnesia:transaction(
-		fun()-> 
-			mnesia:delete(User,Key,write) 
-		end).
+	{atomic,V}=mnesia:transaction(
+		fun()-> mnesia:delete(User,Key,write) end),
+	V.
+
+db_erase_record(User,Key,Data) ->
+	{atomic,V}=mnesia:transaction(
+		fun()-> mnesia:delete_object({User,Key,Data}) end),
+	V.
 
 %надо бы еще устанавливать пароль в одной транзакции.
 create_user(User,Password)->
-	mnesia:create_table(list_to_atom(User),
-		[ {attributes, record_info(fields,db_value)} ]),
+	{atomic,ok}=mnesia:create_table(User,	
+		[	{type,bag},
+			{disc_copies,[node()]}	]),
 	set_password(User,Password).
 
 delete_user(User)->
 	mnesia:delete_table(list_to_atom(User)).
 
+list_users()->
+	mnesia:system_info(tables).
+
+user_exists(User)->
+	lists:member(User,mnesia:system_info(tables)).
 

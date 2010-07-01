@@ -2,28 +2,31 @@
 -export([start/0,stop/0]).
 -import(db_interface,[db_access/1]).
 -import(net_interface,[sendm/2,receivem/1]).
--include("records.hrl").
--define(ok_msg(S),sendm(S,["OK"])).
+-define(ok_msg(),sendm(get(socket),["OK"])).
 
 start()->
-	db_interface:init(),
+	db_interface:start(),
 	register(user_list,spawn(fun ()-> user_list([]) end)),
 	net_interface:start(fun login/1).
 
 stop()->
 	stop_net,
 	user_list!stop,
-	db_interface:get_db()!shutdown,
+	db_interface:stop(),
 	init:stop(0).
 
+% реализация мьютекса для каждого имени пользователя
 user_list(US)->
 	receive
 		stop -> stop;
-		{add,User}->
-			V=lists:member(User,US),
-			user_list(if V -> US ; true -> [User|US] end);
 		{release,User}->
 			user_list(lists:delete(User,US));
+		{Sender,{check_add,User}}->
+			user_list(
+				case Sender!lists:member(User,US) of
+					true->US;
+					false->[User|US]
+				end);
 		{Sender,{check,User}}->
 			Sender!lists:member(User,US),
 			user_list(US);
@@ -40,37 +43,35 @@ login(Socket)->
 			do_login(Socket,User,Password)
 	end.
 
-running(Socket,User)->
-%	put(socket,Socket),put(user,User),
-	case net_interface:receivem(Socket) of
+	
+running()->
+	case net_interface:receivem(get(socket)) of
 		["LISTKEYS"]->
-			list_keys(Socket,User),
-			running(Socket,User);
-		["DELETEKEY",Key]->
-			del_key(Socket,User,Key),
-			running(Socket,User);
-		["SET",Key,Version,Value]->
-			set_value(Socket,User,Key,Version,Value),
-			running(Socket,User);
+			list_keys(),
+			running();
+		["ERASEKEY",Key]->
+			erase_key(Key),
+			running();
+		["ERASERECORD",Key,Value]->
+			erase_record(Key,Value),
+			running();
+		["PUT",Key,Value]->
+			put_value(Key,Value),
+			running();
+		["SETUNIQ",Key,Value]->
+			set_value_uniq(Key,Value),
+			running();
 		["GET",Key]->
-			get_value(Socket,User,Key),
-			running(Socket,User);
-		["SETDESCR",Key,Descr]-> 
-			set_descr(Socket,User,Key,Descr),
-			running(Socket,User);
-		["GETDESCR",Key]-> 
-			get_descr(Socket,User,Key),
-			running(Socket,User);
-		["KEYVERSION",Key]->
-			key_version(Socket,User,Key),
-			running(Socket,User);
+			get_value(Key),
+			running();
 		["SETPASSWORD",Password]->
-			set_password(Socket,User,Password),
-			running(Socket,User);
+			set_password(Password),
+			running();
 		["UNREGISTER"]->
-			unregister_user(Socket,User);
+			unregister_user();
 		["DISCONNECT"]->
-			disconnect(Socket)
+			disconnect(get(socket));
+		_ -> sendm(get(socket),["ERR","Unknown command"])
 	end.
 
 register_user(Socket,User,Password)->
@@ -79,76 +80,59 @@ register_user(Socket,User,Password)->
 			sendm(Socket,["ERR","User is registered already"]);
 		false ->
 			db_access({create_user,User,Password}),
-			?ok_msg(Socket),
-			running(Socket,User)
+			sendm(Socket,["OK"])
 	end.
 
-unregister_user(S,User)->
-	db_access({delete_user,User}),
-	?ok_msg(S).
+unregister_user()->
+	db_access({delete_user,get(user)}),
+	?ok_msg().
 
 do_login(S,User,Password)->
-	NotExists = false =:= db_access({user_exists,User}),
-	WrongPassword = Password =/= db_access({get_password,User}),
-	Connected = true =:= lib:sendw(user_list,{check,User}),
+	NotExists = not db_access({user_exists,User}),
+	OrWrongPassword = NotExists orelse Password =/= db_access({get_password,User}),
+	OrConnected = OrWrongPassword orelse lib:sendw(user_list,{check_add,User}),
 	if	NotExists -> sendm(S,["ERR","User is not registered"]);
-		WrongPassword -> sendm(S,["ERR","Wrong password"]);
-		Connected -> sendm(S,["ERR","Already connected"]);
+		OrWrongPassword -> sendm(S,["ERR","Wrong password"]);
+		OrConnected -> sendm(S,["ERR","Already connected"]);
 		true ->
-			?ok_msg(S),
-			user_list!{add,User},
-			try	
-				running(S,User)
+			sendm(S,["OK"]),
+			try
+				put(socket,S),
+				put(user,User),
+				running()
 			after 
-				user_list!{release,User}
+				user_list!{release,User},
+				erase(socket),
+				erase(user)
 			end
 	end.
 
 disconnect(S) -> 
-	?ok_msg(S).
+	sendm(S,["OK"]).
 
-list_keys(S,User)->
-	sendm(S,["OK"|db_access({list,User})]).
+list_keys()->
+	sendm(get(socket),["OK"|db_access({list_keys,get(user)})]).
 
-set_value(S,User,Key,Vers,Value)->
-	[R]=db_access({get,User,Key}),
-	db_access({set,User,{Key,R#db_value{version=Vers,data=Value}}}),
-	?ok_msg(S).
+put_value(Key,Value)->
+	ok=db_access({put,get(user),Key,Value}),
+	?ok_msg().
 
-get_value(S,User,Key)->
-	sendm(S,["OK"|lists:map(
-		fun(X)-> X#db_value.data end,
-		db_access({get,User,Key}))]).
+set_value_uniq(Key,Value)->
+	ok=db_access({set_uniq,get(user),Key,Value}),
+	?ok_msg().
 
-set_descr(S,User,Key,Descr)->
-	RS=db_access({get,User,Key}),
-	lists:foreach(
-		fun(X)-> 
-			db_access({set,User,{Key,X#db_value{description=Descr}}})
-		end,RS),
-	?ok_msg(S).
+get_value(Key)->
+	sendm(get(socket),["OK"|db_access({get,get(user),Key})]).
 
-get_descr(S,User,Key)->
-	sendm(S,["OK"|lists:map(
-		fun(X)-> X#db_value.description end,
-		db_access({get,User,Key}))]).
+erase_key(Key)->
+	db_access({erase_key,get(user),Key}),
+	?ok_msg().
 
-key_version(S,User,Key)->
-	RS=db_access({get,User,Key}),
-	case RS of
-		[] -> 
-			sendm(S,["ERR","Key not exists"]);
-		V -> 
-			KS=lists:sort(fun (A,B)->A>B end,
-				lists:map(fun(X)-> X#db_value.version end, V)),
-			sendm(S,["OK"|KS])
-	end.
+erase_record(Key,Value)->
+	db_access({erase_record,get(user),Key,Value}),
+	?ok_msg().
 
-del_key(S,User,Key)->
-	db_access({erase_key,User,Key}),
-	?ok_msg(S).
-
-set_password(S,User,Password)->
-	db_access({set_password,User,Password}),
-	?ok_msg(S).
+set_password(Password)->
+	db_access({set_password,get(user),Password}),
+	?ok_msg().
 

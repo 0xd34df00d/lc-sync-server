@@ -1,38 +1,15 @@
 -module(db_interface).
--export([init/0,shutdown/0,get_db/0,work/0,db_access/1]).
+-export([start/1,stop/0,db_access/1]).
+-define(IMPL_MODULE,db_mnesia_impl).
 
-init()->
-	W=register(db_interface_thread,spawn(?MODULE,work,[])),
-	%io:format("~p~n",[W]),
-	db_interface_thread!start.
+start(Params)->
+	?IMPL_MODULE:start(Params).
 	
-shutdown()->
-	db_interface_thread!stop.
-	
-work()->
-	receive
-		start ->
-			case get(th) of 
-				undefined ->
-					% имя модуля здесь указывает на реализацию работы с БД.
-					R=db_impl_mnesia:start(),
-					put(th,R);
-				A -> already_started
-			end,
-			work();
-		stop ->
-			get(th)!shutdown,
-			unregister(db_interface_thread);
-		{T,get_proc}->
-			T!get(th),
-			work();
-		A -> error
-	end.
-
-%% возвращает поток, работающий с db
-get_db()->
-	lib:sendw(db_interface_thread,get_proc).
+stop()->
+	?IMPL_MODULE:stop().
 
 db_access(Q)->
-	lib:sendw(get_db(),Q).
+% Модуль реализации может не допускать одновременных доступов к базе,
+% и использовать отдельный поток. А может и допускать.
+	?IMPL_MODULE:db_access(Q).
 

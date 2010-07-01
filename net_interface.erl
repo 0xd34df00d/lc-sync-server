@@ -40,7 +40,8 @@ server(Callback,LS) ->
 				exit:X -> { exited, X};
 				error:X -> { error, X}
 			after
-				gen_tcp:close(S)
+				gen_tcp:close(S),
+				erase()
 			end,
             server(Callback,LS);
         Other ->
