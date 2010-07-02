@@ -1,6 +1,6 @@
 -module(db_interface).
 -export([start/1,stop/0,db_access/1]).
--define(IMPL_MODULE,db_mnesia_impl).
+-define(IMPL_MODULE,db_impl_mnesia).
 
 start(Params)->
 	?IMPL_MODULE:start(Params).

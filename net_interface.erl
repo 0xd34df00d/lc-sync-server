@@ -55,13 +55,16 @@ send(S,Msg)->
 recv(S)->
 % "The Length argument is only meaningful when the socket is in raw mode"
 	{ok,Packet} = gen_tcp:recv(S,0),
+	io:format("RECV thread:~p socket:~p data:~p~n",[self(),S,Packet]),
 	Packet.
 
 sendm(S,Msg)->
 	send(S,marshal(Msg)).
 
 receivem(S)->
-	unmarshal(recv(S)).
+	R=unmarshal(recv(S)),
+	io:format("RECEIVEM thread:~p socket:~p res:~p~n",[self(),S,R]),
+	R.
 
 marshal(List) ->
 	L = int2list(length(List)),

@@ -5,7 +5,7 @@
 -define(ok_msg(),sendm(get(socket),["OK"])).
 
 start()->
-	db_interface:start(),
+	db_interface:start([]),
 	register(user_list,spawn(fun ()-> user_list([]) end)),
 	net_interface:start(fun login/1).
 

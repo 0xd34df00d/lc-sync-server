@@ -1,10 +1,10 @@
 -module(db_impl_mnesia).
--export([init/0,start/0,stop/0,db_access/1]).
+-export([init/0,start/1,stop/0,db_access/1]).
 -define(PASSWORD_KEY,'PASSWORD').
 -define(PASSWORD_TABLE,'PASSWORDS').
 
 % запуск БД; возвращает поток, работающий с БД.
-start()->
+start(_)->
 	mnesia:start().
 
 % первичная инициализация БД
