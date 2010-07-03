@@ -71,7 +71,8 @@ running()->
 			unregister_user();
 		["DISCONNECT"]->
 			disconnect(get(socket));
-		_ -> sendm(get(socket),["ERR","Unknown command"])
+		_ -> sendm(get(socket),["ERR","Unknown command"]),
+			running()
 	end.
 
 register_user(Socket,User,Password)->

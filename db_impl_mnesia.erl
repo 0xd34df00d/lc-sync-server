@@ -1,9 +1,8 @@
 -module(db_impl_mnesia).
 -export([init/0,start/1,stop/0,db_access/1]).
 -define(PASSWORD_KEY,'PASSWORD').
--define(PASSWORD_TABLE,'PASSWORDS').
 
-% запуск БД; возвращает поток, работающий с БД.
+% запуск БД.
 start(_)->
 	mnesia:start().
 
@@ -17,6 +16,7 @@ stop()->
 
 % доступ к БД.
 % {действие,Пользователь,..<параметры>..}
+% TODO: подумать над перемещением этой функции в db_interface
 db_access(P)->
 	case P of	
 		{list_keys,User}->				db_list_keys(list_to_atom(User));
@@ -36,7 +36,7 @@ db_access(P)->
 
 db_list_keys(User)->
 	{atomic,V}=mnesia:transaction(fun()-> mnesia:all_keys(User)end),
-	V.
+	lists:filter(fun(X)->X =/= ?PASSWORD_KEY end,V).
 
 db_put(User,Key,Value)->
 	{atomic,V}=mnesia:transaction(
