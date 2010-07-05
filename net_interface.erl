@@ -1,29 +1,38 @@
 -module(net_interface).
--export([start/1,start/3,server/2,send/2,recv/1,sendm/2,receivem/1]).
+-export([start/1,start/3,stop/0,server/2,send/2,recv/1,sendm/2,receivem/1,
+	list2int/1,int2list/1]).
 -import(lists,[map/2,flatten/1,sublist/3,split/2,nthtail/2]).
 -define(port,1024).
 -define(num_servers,8).
+-define(read_timeout,infinity).
 
 start(Callback)->
 	start(Callback,?num_servers,?port).
 
 start(Callback,Num,LPort) ->
-    case gen_tcp:listen(LPort,
-    		[list,	%данные в виде списков
-    		{active, false},	%использовать recv для чтения
-    		{packet,4}	%первые 4 байта - длина
-    		]) of
-        {ok, ListenSock} ->
-            start_servers(Callback,Num,ListenSock),
-            {ok, Port} = inet:port(ListenSock),
-            Port;
-        {error,Reason} ->
-            {error,Reason}
-    end.
+	register(ls_stopper,spawn(
+		fun()-> 
+			case gen_tcp:listen(LPort,
+					[list,	%данные в виде списков
+					{active, false},	%использовать recv для чтения
+					{packet,4}	%первые 4 байта - длина
+					]) of
+				{ok, ListenSock} ->
+					start_servers(Callback,Num,ListenSock),
+					{ok, Port} = inet:port(ListenSock),
+					Port;
+				{error,Reason} ->
+					{error,Reason}
+  			end,
+			receive 
+				_->stop 
+			end 
+		end)).
 
-start_servers(_,0,_) ->
-    ok;
+stop()->
+	ls_stopper!stop.
 
+start_servers(_,0,_) -> ok;
 start_servers(Callback,Num,LS) ->
     spawn(?MODULE,server,[Callback,LS]),
     start_servers(Callback,Num-1,LS).
@@ -45,25 +54,27 @@ server(Callback,LS) ->
 			end,
             server(Callback,LS);
         Other ->
-            io:format("accept returned ~w - goodbye!~n",[Other]),
+            io:format("thread ~p exit: accept returned ~w~n",[self(),Other]),
             ok
     end.
 
 send(S,Msg)->
+	io:format("SEND thread:~p socket:~p~ndata:~p~n",[self(),S,Msg]),
 	gen_tcp:send(S,Msg).
 
 recv(S)->
 % "The Length argument is only meaningful when the socket is in raw mode"
-	{ok,Packet} = gen_tcp:recv(S,0),
-	io:format("RECV thread:~p socket:~p data:~p~n",[self(),S,Packet]),
+	{ok,Packet} = gen_tcp:recv(S,0,?read_timeout),
+	io:format("RECV thread:~p socket:~p~ndata:~p~n",[self(),S,Packet]),
 	Packet.
 
 sendm(S,Msg)->
+	io:format("SENDM thread:~p socket:~p~nmsg:~p~n",[self(),S,Msg]),
 	send(S,marshal(Msg)).
 
 receivem(S)->
 	R=unmarshal(recv(S)),
-	io:format("RECEIVEM thread:~p socket:~p res:~p~n",[self(),S,R]),
+	io:format("RECEIVEM thread:~p socket:~p~nmsg:~p~n",[self(),S,R]),
 	R.
 
 marshal(List) ->
@@ -90,7 +101,6 @@ list2int(YS)->
 	lists:foldl(fun(X,SM)-> SM * 16#100 + X rem 16#100 end,0,YS).
 
 int2list(V)->
-	[(V bsl 24) band 255, (V bsl 16) band 255,
-		(V bsl 8) band 255, V band 255].
+	[(V bsl Sh) band 255||Sh<-[24,16,8,0]].
 
 

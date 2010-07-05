@@ -5,15 +5,24 @@
 -define(ok_msg(),sendm(get(socket),["OK"])).
 
 start()->
-	db_interface:start([]),
-	register(user_list,spawn(fun ()-> user_list([]) end)),
-	net_interface:start(fun login/1).
+	case whereis(user_list) of
+		undefined ->
+			register(user_list,spawn(fun ()-> user_list([]) end)),
+			db_interface:start([]),
+			net_interface:start(fun login/1);
+		_ ->
+			already_started
+	end.
 
 stop()->
-	stop_net,
-	user_list!stop,
-	db_interface:stop(),
-	init:stop(0).
+	case whereis(user_list) of
+		undefined -> 
+			not_started;
+		_->
+			net_interface:stop(),
+			user_list!stop,
+			db_interface:stop()
+	end.
 
 % реализация мьютекса для каждого имени пользователя
 user_list(US)->
@@ -61,8 +70,8 @@ running()->
 		["SETUNIQ",Key,Value]->
 			set_value_uniq(Key,Value),
 			running();
-		["GET",Key]->
-			get_value(Key),
+		["GET",Key|CS]->
+			select_values(Key,CS),
 			running();
 		["SETPASSWORD",Password]->
 			set_password(Password),
@@ -122,8 +131,32 @@ set_value_uniq(Key,Value)->
 	ok=db_access({set_uniq,get(user),Key,Value}),
 	?ok_msg().
 
-get_value(Key)->
-	sendm(get(socket),["OK"|db_access({get,get(user),Key})]).
+select_values(Key,Conditions)->
+	if 
+		length(Conditions) rem 2 == 1 -> 
+			sendm(get(socket),["ERR","Odd number of filter parameters"]);
+		true->
+			AllRecords=db_access({get,get(user),Key}),
+			FilteredRecords=filter_records(AllRecords,Conditions),
+			sendm(get(socket),["OK"|FilteredRecords])
+	end.
+
+filter_records(AllRecords,Conditions)->
+	lists:foldl(
+		fun({Offset,Pattern},Records)-> 
+			lists:filter(
+				fun(Record)->
+					is_list(Record) andalso 
+						Offset>0 andalso Offset=<length(Record) andalso 
+						Pattern=:=lists:sublist(Record,Offset,length(Pattern))
+				end,Records)
+		end,AllRecords,
+		%преобразование чисел из big endian
+		[{net_interface:list2int(O),P}||{O,P}<-list_to_tuples(Conditions)]).
+
+list_to_tuples([])->[];
+list_to_tuples([X,Y|XS])->
+	[{X,Y}|list_to_tuples(XS)].
 
 erase_key(Key)->
 	db_access({erase_key,get(user),Key}),

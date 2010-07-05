@@ -88,8 +88,10 @@ value - erlang term (mnesia)
 	Удаление всех записей ключа.
 (running) ERASERECORD key value
 	Удаление конкретной записи.
-(running) GET key
-	Получить список значений по ключу.
+(running) GET key [ { offset pattern } ]
+	Получить список значений по ключу. Если заданы шаблоны, то сервер выдаёт 
+	только те записи, которые удовлетворяют всем шаблонам.
+	pattern - шаблон, offset - смещение от начала значения (нумерация с 1).	
 (running) PUT key version value
 	Добавление значения по ключу.
 (running) SETUNIQ key version value

@@ -2,7 +2,7 @@
 -compile(export_all).
 
 make()->
-	lists:map(fun c:c/1,
+	lists:map(fun (X)->c:c(X,[compressed])end,
 		[syncserver,net_interface,db_impl_mnesia,db_interface]).
 
 start()->	syncserver:start().
