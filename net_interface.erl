@@ -10,7 +10,7 @@ start(Callback)->
 	start(Callback,?num_servers,?port).
 
 start(Callback,Num,LPort) ->
-	register(ls_stopper,spawn(
+	register(net_stopper,spawn(
 		fun()-> 
 			case gen_tcp:listen(LPort,
 					[list,	%данные в виде списков
@@ -25,16 +25,16 @@ start(Callback,Num,LPort) ->
 					{error,Reason}
   			end,
 			receive 
-				_->stop 
+				stop->exit("Stopping network") 
 			end 
 		end)).
 
 stop()->
-	ls_stopper!stop.
+	net_stopper!stop.
 
 start_servers(_,0,_) -> ok;
 start_servers(Callback,Num,LS) ->
-    spawn(?MODULE,server,[Callback,LS]),
+    spawn_link(?MODULE,server,[Callback,LS]),
     start_servers(Callback,Num-1,LS).
 
 server(Callback,LS) ->
