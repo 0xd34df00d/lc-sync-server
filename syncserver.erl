@@ -222,11 +222,12 @@ set_password(Password)->
 % не-общие команды
 
 put_delta(Key,Id,Delta)->
-	AllIds=lists:map(fun select_delta_id/1,get_values(Key,[1,?delta_prefix])),
+	AllIds=lists:map(fun select_delta_id/1,all_deltas(Key)),
+	io:format("put_delta.allIds: ~p~n",[AllIds]),
 	% по идее допустимо сравнение id'ов без преобразования в int().
 	case lists:all(fun(X)-> X<Id end,AllIds) of
 		true->
-			db_access({put,get(user),Key,?delta_prefix++Id++Delta}),
+			D=db_access({put,get(user),Key,?delta_prefix++Id++Delta}),
 			?ok_msg();
 		_->
 			sendm(get(socket),["ERR","Wrong Id"])
@@ -247,7 +248,7 @@ get_delta(Key,StartId)->
 
 all_deltas(Key)->get_filtered_records(Key,[1,?delta_prefix]).
 select_delta_data(Delta)->
-	lists:sublist(Delta,1+length(?delta_prefix)+?delta_id_length).
+	lists:nthtail(length(?delta_prefix)+?delta_id_length,Delta).
 select_delta_id(Delta)->
 	lists:sublist(Delta,1+length(?delta_prefix),?delta_id_length).
 
