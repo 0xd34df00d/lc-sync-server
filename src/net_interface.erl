@@ -10,7 +10,7 @@ start(Callback)->
 	start(Callback,?num_servers,?port).
 
 start(Callback,Num,LPort) ->
-	register(net_stopper,spawn(
+	register(net_stopper,spawn_link(
 		fun()-> 
 			case gen_tcp:listen(LPort,
 					[list,	%данные в виде списков

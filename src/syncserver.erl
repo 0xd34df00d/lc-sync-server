@@ -9,15 +9,15 @@
 -define(delta_zero_id,[0,0,0,0]).
 
 % TODO: нормальное поведение приложения.
-start(Type, StartArgs) -> start().
-stop(State) -> stop().
+start(_Type, _StartArgs) -> {ok,spawn(fun start/0)}.
+stop(_State) -> stop().
 
 % TODO: рефакторинг.
 
 start()->
 	case whereis(user_list) of
 		undefined ->
-			register(user_list,spawn(fun ()-> user_list([]) end)),
+			register(user_list,spawn_link(fun ()-> user_list([]) end)),
 			db_interface:start([]),
 			net_interface:start(fun login/1);
 		_ ->
@@ -227,7 +227,7 @@ put_delta(Key,Id,Delta)->
 	% по идее допустимо сравнение id'ов без преобразования в int().
 	case lists:all(fun(X)-> X<Id end,AllIds) of
 		true->
-			D=db_access({put,get(user),Key,?delta_prefix++Id++Delta}),
+			db_access({put,get(user),Key,?delta_prefix++Id++Delta}),
 			?ok_msg();
 		_->
 			sendm(get(socket),["ERR","Wrong Id"])
