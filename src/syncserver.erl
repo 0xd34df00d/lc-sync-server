@@ -1,37 +1,40 @@
 -module(syncserver).
--export([start/0,stop/0,start/2,stop/1]).
+-export([start/0,stop/0,start/2,stop/1,init/1,run/1]).
 -import(db_interface,[db_access/1]).
 -import(net_interface,[sendm/2,receivem/1,list2int/1,int2list/1]).
 -behaviour(application).
+-behaviour(supervisor).
 -define(ok_msg(),sendm(get(socket),["OK"])).
 -define(delta_prefix,"DELTA\x00\x00\x00").
 -define(delta_id_length,4).
 -define(delta_zero_id,[0,0,0,0]).
 
 % TODO: нормальное поведение приложения.
-start(_Type, _StartArgs) -> {ok,spawn(fun start/0)}.
-stop(_State) -> stop().
+start() -> start(normal,[]).
+stop() -> stop([]).
 
 % TODO: рефакторинг.
 
-start()->
+start(_Type, StartArgs)->
+	supervisor:start_link(?MODULE,StartArgs).
+
+stop(_State)->
+	db_interface:stop().
+
+init(Args) ->
+	{ok,{{one_for_one, 1, 60},
+		[{?MODULE, {?MODULE, run, Args},temporary, brutal_kill, worker, [?MODULE]}]
+		}}.
+
+run(_Args)->
 	case whereis(user_list) of
 		undefined ->
-			register(user_list,spawn_link(fun ()-> user_list([]) end)),
+			T=register(user_list,spawn_link(fun ()-> user_list([]) end)),
 			db_interface:start([]),
-			net_interface:start(fun login/1);
+			net_interface:start(fun login/1),
+			{ok,T};
 		_ ->
 			already_started
-	end.
-
-stop()->
-	case whereis(user_list) of
-		undefined -> 
-			not_started;
-		_->
-			net_interface:stop(),
-			user_list!stop,
-			db_interface:stop()
 	end.
 
 % реализация мьютекса для каждого имени пользователя
@@ -94,8 +97,8 @@ running()->
 		["DISCONNECT"]->
 			disconnect(get(socket));
 		% не-общие команды
-		["PUTDELTA",Key,Id,Delta]->
-			put_delta(Key,Id,Delta),
+		["PUTDELTA",Key,Id,Delta|DS]->
+			put_deltas(Key,Id,[Delta|DS]),
 			running();
 		["GETDELTA",Key,StartId]->
 			get_delta(Key,StartId),
@@ -221,18 +224,26 @@ set_password(Password)->
 	
 % не-общие команды
 
-put_delta(Key,Id,Delta)->
+put_deltas(Key,StartId,Deltas)->
 	AllIds=lists:map(fun select_delta_id/1,all_deltas(Key)),
 	io:format("put_delta.allIds: ~p~n",[AllIds]),
 	% по идее допустимо сравнение id'ов без преобразования в int().
-	case lists:all(fun(X)-> X<Id end,AllIds) of
+	case lists:all(fun(X)-> X<StartId end,AllIds) of
 		true->
-			db_access({put,get(user),Key,?delta_prefix++Id++Delta}),
+			lists:foreach(
+				fun(V)-> 
+					db_access({put,get(user),Key,V})
+				end,form_deltas(StartId,Deltas)),
 			?ok_msg();
 		_->
 			sendm(get(socket),["ERR","Wrong Id"])
 	end.
 
+form_deltas(StartId,Deltas)->
+	IdInt=list2int(StartId),
+	IDs=[int2list(I)||I<-lists:seq(IdInt,IdInt+length(Deltas)-1)],
+	[?delta_prefix++Id++Delta||{Id,Delta}<-lists:zip(IDs,Deltas)].
+	
 get_delta(Key,StartId)->
 	All=get_filtered_records(Key,[1,?delta_prefix]),
 	Filtered=lists:filter(
