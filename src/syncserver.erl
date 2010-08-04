@@ -9,6 +9,22 @@
 -define(delta_id_length,4).
 -define(delta_zero_id,[0,0,0,0]).
 
+% сообщения об ошибках и их коды.
+-define(err_unknown_command,
+	["ERR",[0,0,0,0],"Unknown command"]).
+-define(err_user_registered,
+	["ERR",[0,0,0,1],"User is registered already"]).
+-define(err_user_not_registered,
+	["ERR",[0,0,0,2],"User is not registered"]).
+-define(err_password,
+	["ERR",[0,0,0,3],"Wrong password"]).
+-define(err_already_connected,
+	["ERR",[0,0,0,4],"Already connected"]).
+-define(err_odd_parameters,
+	["ERR",[0,0,0,5],"Odd number of filter parameters"]).
+-define(err_wrong_delta_id,
+	["ERR",[0,0,0,6],"Wrong delta`s Id"]).
+
 % TODO: нормальное поведение приложения.
 start() -> start(normal,[]).
 stop() -> stop([]).
@@ -107,14 +123,14 @@ running()->
 			max_delta(Key),
 			running();		
 		% обработка неизвестной команды
-		_ -> sendm(get(socket),["ERR","Unknown command"]),
+		_ -> sendm(get(socket),?err_unknown_command),
 			running()
 	end.
 
 register_user(Socket,User,Password)->
 	case db_access({user_exists,User}) of
 		true->
-			sendm(Socket,["ERR","User is registered already"]);
+			sendm(Socket,?err_user_registered);
 		false ->
 			db_access({create_user,User,Password}),
 			sendm(Socket,["OK"])
@@ -128,9 +144,9 @@ do_login(S,User,Password)->
 	NotExists = not db_access({user_exists,User}),
 	OrWrongPassword = NotExists orelse Password =/= db_access({get_password,User}),
 	OrConnected = OrWrongPassword orelse lib:sendw(user_list,{check_add,User}),
-	if	NotExists -> sendm(S,["ERR","User is not registered"]);
-		OrWrongPassword -> sendm(S,["ERR","Wrong password"]);
-		OrConnected -> sendm(S,["ERR","Already connected"]);
+	if	NotExists -> sendm(S,?err_user_not_registered);
+		OrWrongPassword -> sendm(S,?err_password);
+		OrConnected -> sendm(S,?err_already_connected);
 		true ->
 			sendm(S,["OK"]),
 			try
@@ -161,7 +177,7 @@ set_value_uniq(Key,Value)->
 get_values(Key,Conditions)->
 	if 
 		length(Conditions) rem 2 == 1 -> 
-			sendm(get(socket),["ERR","Odd number of filter parameters"]);
+			sendm(get(socket),?err_odd_parameters);
 		true->
 			AllRecords=db_access({get,get(user),Key}),
 			FilteredRecords=filter_records(AllRecords,Conditions),
@@ -187,7 +203,7 @@ select_values(Key,F,L,Conditions)->
 	Len=list2int(L),
 	if 
 		length(Conditions) rem 2 == 1 -> 
-			sendm(get(socket),["ERR","Odd number of filter parameters"]);
+			sendm(get(socket),?err_odd_parameters);
 		true->
 			AllRecords=db_access({get,get(user),Key}),
 			FilteredRecords=filter_records(AllRecords,Conditions),
@@ -236,7 +252,7 @@ put_deltas(Key,StartId,Deltas)->
 				end,form_deltas(StartId,Deltas)),
 			?ok_msg();
 		_->
-			sendm(get(socket),["ERR","Wrong Id"])
+			sendm(get(socket),?err_wrong_delta_id)
 	end.
 
 form_deltas(StartId,Deltas)->

@@ -70,6 +70,30 @@ value - erlang term (mnesia)
 отправляет ответное сообщение. См. конечный автомат Мили. Ответное сообщение
 в первом подсписке содержит код успеха (строка OK или ERR), и в остальных 
 подсписках может содержать данные или сообщение об ошибке.
+	В случае успеха сервер присылает сообщение вида
+	["OK",data...]
+где data - несколько (N>=0) списков с данными. Если сообщение об успехе 
+не передаёт данных, сервер пришлёт просто ["OK"].
+	Если были ошибки, то присылается сообщение об ошибке в виде 
+	["ERR",code,message]
+где code - код ошибки (число из четырех байт), message - сообщение об ошибке
+(строка). Сообщения об ошибках заданы в Erlang следующими макросами:
+
+-define(err_unknown_command,
+	["ERR",[0,0,0,0],"Unknown command"]).
+-define(err_user_registered,
+	["ERR",[0,0,0,1],"User is registered already"]).
+-define(err_user_not_registered,
+	["ERR",[0,0,0,2],"User is not registered"]).
+-define(err_password,
+	["ERR",[0,0,0,3],"Wrong password"]).
+-define(err_already_connected,
+	["ERR",[0,0,0,4],"Already connected"]).
+-define(err_odd_parameters,
+	["ERR",[0,0,0,5],"Odd number of filter parameters"]).
+-define(err_wrong_delta_id,
+	["ERR",[0,0,0,6],"Wrong delta`s Id"]).
+
 	Далее описываются реализованные команды.
 
 (состояние сервера) КОМАНДА параметры
