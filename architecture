@@ -111,8 +111,9 @@ value - erlang term (mnesia)
 синхронизации надо или добавлять команды, или помещать всю логику в клиент.
 
 	Серверные команды синхронизации:
-(running) PUTDELTA key id delta
-	Добавление дельты (требуется id>maxId).
+(running) PUTDELTA key id delta [delta2 ... ]
+	Добавление дельты или нескольких дельт. Требуется id>maxId. При добавлении
+	нескольких дельт они нумеруются последовательно, начиная с номера 'id'.
 (running) GETDELTA key startid
 	Получение всех дельт с id>startid в порядке возрастания.
 (running) MAXDELTA key
