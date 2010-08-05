@@ -1,62 +1,50 @@
 -module(net_interface).
--export([start/1,start/3,stop/0,server/2,send/2,recv/1,sendm/2,receivem/1,
-	list2int/1,int2list/1]).
+-export([send/2,recv/1,sendm/2,receivem/1,list2int/1,int2list/1]).
+-export([handler_thread/2,server_start/1,init/1]).
 -import(lists,[map/2,flatten/1,sublist/3,split/2,nthtail/2]).
--define(port,1024).
--define(num_servers,8).
 -define(read_timeout,infinity).
 
-start(Callback)->
-	start(Callback,?num_servers,?port).
+server_start(Callback)->
+	{ok,spawn_link(fun()->
+		io:format("getting port..~n",[]),
+		{ok,Port}=application:get_env(port),
+		io:format("Port: ~p~n",[Port]),
+		io:format("Creating ListenSocket..~n",[]),
+		{ok,ListenSocket}=gen_tcp:listen(Port,
+			[list,	%данные в виде списков
+			{active, false},	%использовать recv для чтения
+			{packet,4}	%первые 4 байта - длина
+			]),
+		connection_receiver(Callback,ListenSocket)
+	end)}.
 
-start(Callback,Num,LPort) ->
-	register(net_stopper,spawn_link(
-		fun()-> 
-			case gen_tcp:listen(LPort,
-					[list,	%данные в виде списков
-					{active, false},	%использовать recv для чтения
-					{packet,4}	%первые 4 байта - длина
-					]) of
-				{ok, ListenSock} ->
-					start_servers(Callback,Num,ListenSock),
-					{ok, Port} = inet:port(ListenSock),
-					Port;
-				{error,Reason} ->
-					{error,Reason}
-  			end,
-			receive 
-				stop->exit("Stopping network") 
-			end 
-		end)).
-
-stop()->
-	net_stopper!stop.
-
-start_servers(_,0,_) -> ok;
-start_servers(Callback,Num,LS) ->
-    spawn_link(?MODULE,server,[Callback,LS]),
-    start_servers(Callback,Num-1,LS).
-
-server(Callback,LS) ->
+connection_receiver(Callback,ListenSocket)->
 	io:format("~p accept..~n",[self()]),
-    case gen_tcp:accept(LS) of
-        {ok,S} ->
-        	io:format("~p accepted ~p~n",[self(),S]),
-			try 
-				Callback(S) 
-            catch 
-            	throw:X -> { thrown, X};
-				exit:X -> { exited, X};
-				error:X -> { error, X}
-			after
-				gen_tcp:close(S),
-				erase()
-			end,
-            server(Callback,LS);
-        Other ->
-            io:format("thread ~p exit: accept returned ~w~n",[self(),Other]),
-            ok
-    end.
+	{ok,S}=gen_tcp:accept(ListenSocket),
+	io:format("~p accepted ~p~n",[self(),S]),
+	supervisor:start_child(handler_pool,child_spec_handler(Callback,S)),
+	connection_receiver(Callback,ListenSocket).
+
+init(_Args)->
+	{ok,{{one_for_one, 3, 10},[]}}.
+
+child_spec_handler(Callback,Socket)->
+	{{net_thread,make_ref()},{net_interface,handler_thread,[Callback,Socket]},temporary,2,worker,[]}.
+
+handler_thread(Callback,Socket)->
+	{ok,spawn_link(fun()->
+		io:format("Handler ~p start~n",[self()]),
+		try
+			Callback(Socket)
+		catch
+			throw:X -> io:format("~p throw:~p~n",[self(),X]);
+			exit:X -> io:format("~p exit:~p~n",[self(),X]);
+			error:X ->io:format("~p error:~p~n",[self(),X])
+		after
+			gen_tcp:close(Socket)
+		end,
+		io:format("Handler ~p finish~n",[self()])
+		end)}.
 
 send(S,Msg)->
 	io:format("SEND thread:~p socket:~p~ndata:~p~n",[self(),S,Msg]),

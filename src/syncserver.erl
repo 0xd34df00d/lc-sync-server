@@ -1,6 +1,6 @@
 -module(syncserver).
 -export([start/0,stop/0,start/2,stop/1,init/1]).
--export([start_user_list/0,run_init/1]).
+-export([start_user_list/0]).
 -import(db_interface,[db_access/1]).
 -import(net_interface,[sendm/2,receivem/1,list2int/1,int2list/1]).
 -behaviour(application).
@@ -26,10 +26,6 @@
 -define(err_wrong_delta_id,
 	["ERR",[0,0,0,6],"Wrong delta`s Id"]).
 
-% TODO: нормальное поведение приложения.
-start() -> start(normal,[]).
-stop() -> stop([]).
-
 % TODO: рефакторинг.
 
 start(_Type, StartArgs)->
@@ -37,19 +33,20 @@ start(_Type, StartArgs)->
 
 stop(_State)->
 	ok.
-%	db_interface:stop().
 
 init(Args) ->
 	{ok,{{one_for_one, 3, 10},[
-		{user_list,{syncserver,start_user_list,[]},transient,brutal_kill,worker,[]},
-		{init,{syncserver,run_init,[Args]},transient,brutal_kill,worker,[]}
+		{user_list,
+			{syncserver,start_user_list,[]},
+			transient,brutal_kill,worker,[]},
+		{handler_pool,
+			% может {global,handler_pool} ?
+			{supervisor,start_link,[{local,handler_pool},net_interface,Args]},
+			permanent,infinity,supervisor,[net_interface]},
+		{connection_receiver,
+			{net_interface,server_start,[fun login/1]},
+			permanent,brutal_kill,worker,[]}
 	]}}.
-
-run_init(_Args)->
-	{ok,spawn_link(fun()->
-%		db_interface:start([]),
-		net_interface:start(fun login/1)
-	end)}.
 
 start_user_list()->
 	{ok,spawn_link(
