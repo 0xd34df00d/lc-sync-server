@@ -22,10 +22,11 @@ util:create_db().
 	Для запуска Erlang-системы выполните:
 erl -pa ebin
 	Запуск сервера:
-util:start().
+application:start(mnesia).
+application:start(syncserver).
 	Останов сервера:
-util:stop().
-	пока только так. разработка совсем не завершена.
+application:stop(syncserver).
+	(разработка еще не завершена, сценарии запуска будут изменены)
 
 
 	

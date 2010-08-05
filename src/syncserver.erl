@@ -1,5 +1,6 @@
 -module(syncserver).
--export([start/0,stop/0,start/2,stop/1,init/1,run/1]).
+-export([start/0,stop/0,start/2,stop/1,init/1]).
+-export([start_user_list/0,run_init/1]).
 -import(db_interface,[db_access/1]).
 -import(net_interface,[sendm/2,receivem/1,list2int/1,int2list/1]).
 -behaviour(application).
@@ -35,23 +36,27 @@ start(_Type, StartArgs)->
 	supervisor:start_link(?MODULE,StartArgs).
 
 stop(_State)->
-	db_interface:stop().
+	ok.
+%	db_interface:stop().
 
 init(Args) ->
-	{ok,{{one_for_one, 1, 60},
-		[{?MODULE, {?MODULE, run, Args},temporary, brutal_kill, worker, [?MODULE]}]
-		}}.
+	{ok,{{one_for_one, 3, 10},[
+		{user_list,{syncserver,start_user_list,[]},transient,brutal_kill,worker,[]},
+		{init,{syncserver,run_init,[Args]},transient,brutal_kill,worker,[]}
+	]}}.
 
-run(_Args)->
-	case whereis(user_list) of
-		undefined ->
-			T=register(user_list,spawn_link(fun ()-> user_list([]) end)),
-			db_interface:start([]),
-			net_interface:start(fun login/1),
-			{ok,T};
-		_ ->
-			already_started
-	end.
+run_init(_Args)->
+	{ok,spawn_link(fun()->
+%		db_interface:start([]),
+		net_interface:start(fun login/1)
+	end)}.
+
+start_user_list()->
+	{ok,spawn_link(
+		fun()->
+			register(user_list,self()),
+			user_list([])
+		end)}.
 
 % реализация мьютекса для каждого имени пользователя
 user_list(US)->
