@@ -1,5 +1,5 @@
 -module(syncserver).
--export([start/0,stop/0,start/2,stop/1,init/1]).
+-export([start/2,stop/1,init/1]).
 -export([start_user_list/0]).
 -import(db_interface,[db_access/1]).
 -import(net_interface,[sendm/2,receivem/1,list2int/1,int2list/1]).
