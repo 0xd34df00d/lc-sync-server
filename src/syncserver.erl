@@ -26,6 +26,11 @@
 -define(err_wrong_delta_id,
 	["ERR",[0,0,0,6],"Wrong delta`s Id"]).
 
+% коды успеха при работе с дельтами
+-define(scGeneralSuccess,[0,0,0,0]).
+-define(scMaxDeltaIDReceived,[0,0,0,1]).
+-define(scDeltasReceived,[0,0,0,2]).
+
 % TODO: рефакторинг.
 
 start(_Type, StartArgs)->
@@ -252,7 +257,7 @@ put_deltas(Key,StartId,Deltas)->
 				fun(V)-> 
 					db_access({put,get(user),Key,V})
 				end,form_deltas(StartId,Deltas)),
-			?ok_msg();
+			sendm(get(socket),?scGeneralSuccess);
 		_->
 			sendm(get(socket),?err_wrong_delta_id)
 	end.
@@ -273,7 +278,7 @@ get_delta(Key,StartId)->
 			select_delta_id(A)=<select_delta_id(B)
 		end,Filtered),
 	Deltas=lists:map(fun select_delta_data/1,Sorted),
-	sendm(get(socket),["OK"|Deltas]).
+	sendm(get(socket),["OK",?scDeltasReceived|Deltas]).
 
 all_deltas(Key)->get_filtered_records(Key,[1,?delta_prefix]).
 select_delta_data(Delta)->
@@ -284,6 +289,6 @@ select_delta_id(Delta)->
 max_delta(Key)->
 	AllIds=lists:map(fun select_delta_id/1,all_deltas(Key)),
 	R = if AllIds =/= [] -> lists:max(AllIds); true -> ?delta_zero_id end,
-	sendm(get(socket),["OK", R]).
+	sendm(get(socket),["OK",?scMaxDeltaIDReceived, R]).
 
 
