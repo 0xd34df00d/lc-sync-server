@@ -39,9 +39,9 @@ init(Args) ->
 		{user_list,
 			{syncserver,start_user_list,[]},
 			transient,brutal_kill,worker,[]},
-		{handler_pool,
-			% может {global,handler_pool} ?
-			{supervisor,start_link,[{local,handler_pool},net_interface,Args]},
+		{connection_handler_pool,
+			% может {global,connection_handler_pool} ?
+			{supervisor,start_link,[{local,connection_handlers},net_interface,Args]},
 			permanent,infinity,supervisor,[net_interface]},
 		{connection_receiver,
 			{net_interface,server_start,[fun login/1]},

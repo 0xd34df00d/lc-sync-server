@@ -6,6 +6,7 @@
 
 server_start(Callback)->
 	{ok,spawn_link(fun()->
+		register(connection_receiver,self()),
 		io:format("getting port..~n",[]),
 		{ok,Port}=application:get_env(port),
 		io:format("Port: ~p~n",[Port]),
