@@ -94,14 +94,6 @@ value - erlang term (mnesia)
 -define(err_wrong_delta_id,
 	["ERR",[0,0,0,6],"Wrong delta`s Id"]).
 
-	При работе с дельтами, даже если ошибок не было, дополнительно 
-возвращается код успеха:
-	["OK",code,data...]
-	Коды успеха при работе с дельтами:
--define(scGeneralSuccess,[0,0,0,0]).
--define(scMaxDeltaIDReceived,[0,0,0,1]).
--define(scDeltasReceived,[0,0,0,2]).
-
 	Далее описываются реализованные команды.
 
 (состояние сервера) КОМАНДА параметры
