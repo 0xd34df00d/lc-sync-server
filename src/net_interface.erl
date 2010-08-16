@@ -90,6 +90,6 @@ list2int(YS)->
 	lists:foldl(fun(X,SM)-> SM * 16#100 + X rem 16#100 end,0,YS).
 
 int2list(V)->
-	[(V bsl Sh) band 255||Sh<-[24,16,8,0]].
+	[(V bsr Sh) band 255||Sh<-[24,16,8,0]].
 
 
