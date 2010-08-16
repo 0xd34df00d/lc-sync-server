@@ -20,13 +20,13 @@ util:create_db().
 	
 Запуск и останов.
 	Для запуска Erlang-системы выполните:
-erl -pa ebin
+erl -pa ebin -config syncserver
 	Запуск сервера:
 application:start(mnesia).
 application:start(syncserver).
+	Можно также запустить приложение sasl, чтобы видеть логи супервизоров.
 	Останов сервера:
 application:stop(syncserver).
-	(разработка еще не завершена, сценарии запуска будут изменены)
 
 
 	
