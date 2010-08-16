@@ -52,30 +52,33 @@ start_user_list()->
 	{ok,spawn_link(
 		fun()->
 			register(user_list,self()),
+			error_logger:info_msg("User list: started in ~p~n",[self()]),
 			user_list([])
 		end)}.
 
 % реализация мьютекса для каждого имени пользователя
 user_list(US)->
 	receive
-		stop -> stop;
 		{release,User}->
+			error_logger:info_msg("User list: release user ~p~n",[User]),
 			user_list(lists:delete(User,US));
 		{Sender,{check_add,User}}->
 			user_list(
 				case Sender!lists:member(User,US) of
-					true->US;
-					false->[User|US]
+					true->
+						error_logger:info_msg("User list: check_add user ~p: already connected~n",[User]),
+						US;
+					false->
+						error_logger:info_msg("User list: check_add user ~p: added to list~n",[User]),
+						[User|US]
 				end);
-		{Sender,{check,User}}->
-			Sender!lists:member(User,US),
-			user_list(US);
-		{Sender,get_all}-> 
-			Sender!US,
+		M -> 
+			error_logger:warning_msg("User list: unhandled message: ~p~n",[M]),
 			user_list(US)
 	end.
 
 login(Socket)->
+	error_logger:info_msg("Handler: ~p in LOGIN state~n",[self()]),
 	case net_interface:receivem(Socket) of
 		["REGISTER",User,Password]->
 			register_user(Socket,User,Password);
@@ -85,6 +88,7 @@ login(Socket)->
 
 	
 running()->
+	error_logger:info_msg("Handler: ~p in RUNNING state~n",[self()]),
 	case net_interface:receivem(get(socket)) of
 		["LISTKEYS"]->
 			list_keys(),
@@ -130,32 +134,45 @@ running()->
 	end.
 
 register_user(Socket,User,Password)->
+	error_logger:info_msg("Registration: trying to register user ~p..~n",[User]),
 	case db_access({user_exists,User}) of
 		true->
+			error_logger:info_msg("Registration: user ~p was not registered~n",[User]),
 			sendm(Socket,?err_user_registered);
 		false ->
 			db_access({create_user,User,Password}),
+			error_logger:info_msg("Registration: user ~p was registered~n",[User]),
 			sendm(Socket,["OK"])
 	end.
 
 unregister_user()->
-	db_access({delete_user,get(user)}),
+	db_access({delete_user,User=get(user)}),
+	error_logger:info_msg("Unregistration: user ~p was unregistered~n",[User]),
 	?ok_msg().
 
 do_login(S,User,Password)->
+	error_logger:info_msg("Login: trying to login as user ~p..~n",[User]),
 	NotExists = not db_access({user_exists,User}),
 	OrWrongPassword = NotExists orelse Password =/= db_access({get_password,User}),
 	OrConnected = OrWrongPassword orelse lib:sendw(user_list,{check_add,User}),
-	if	NotExists -> sendm(S,?err_user_not_registered);
-		OrWrongPassword -> sendm(S,?err_password);
-		OrConnected -> sendm(S,?err_already_connected);
+	if	NotExists -> 
+			error_logger:info_msg("Login: user ~p don`t exists~n",[User]),
+			sendm(S,?err_user_not_registered);
+		OrWrongPassword -> 
+			error_logger:info_msg("Login: wrong password for user ~p~n",[User]),
+			sendm(S,?err_password);
+		OrConnected -> 
+			error_logger:info_msg("Login: user ~p is already connected~n",[User]),
+			sendm(S,?err_already_connected);
 		true ->
 			sendm(S,["OK"]),
+			error_logger:info_msg("Login: ~p logined as user ~p~n",[self(),User]),
 			try
 				put(socket,S),
 				put(user,User),
 				running()
-			after 
+			after
+				error_logger:info_msg("Login: user ~p disconnected~n",[User]),
 				user_list!{release,User},
 				erase(socket),
 				erase(user)
@@ -244,7 +261,7 @@ set_password(Password)->
 
 put_deltas(Key,StartId,Deltas)->
 	AllIds=lists:map(fun select_delta_id/1,all_deltas(Key)),
-	io:format("put_delta.allIds: ~p~n",[AllIds]),
+	error_logger:info_msg("Handler in ~p: put_delta.allIds: ~p~n",[self(),AllIds]),
 	% по идее допустимо сравнение id'ов без преобразования в int().
 	case lists:all(fun(X)-> X<StartId end,AllIds) of
 		true->

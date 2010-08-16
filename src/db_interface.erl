@@ -11,5 +11,6 @@ stop()->
 db_access(Q)->
 % Модуль реализации может не допускать одновременных доступов к базе,
 % и использовать отдельный поток. А может и допускать.
+	error_logger:info_msg("db_interface:db_access(~p)~n",[Q]),
 	?IMPL_MODULE:db_access(Q).
 

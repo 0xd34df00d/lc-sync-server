@@ -7,10 +7,10 @@
 server_start(Callback)->
 	{ok,spawn_link(fun()->
 		register(connection_receiver,self()),
-		io:format("getting port..~n",[]),
+		error_logger:info_msg("Connection receiver: started in ~p~n",[self()]),
 		{ok,Port}=application:get_env(port),
-		io:format("Port: ~p~n",[Port]),
-		io:format("Creating ListenSocket..~n",[]),
+		error_logger:info_msg("Connection receiver: listening port is ~p~n",[Port]),
+		error_logger:info_report("Connection receiver: creating ListenSocket.."),
 		{ok,ListenSocket}=gen_tcp:listen(Port,
 			[list,	%данные в виде списков
 			{active, false},	%использовать recv для чтения
@@ -20,10 +20,10 @@ server_start(Callback)->
 	end)}.
 
 connection_receiver(Callback,ListenSocket)->
-	io:format("~p accept..~n",[self()]),
+	error_logger:info_report("Connection receiver: accepting.."),
 	{ok,S}=gen_tcp:accept(ListenSocket),
-	io:format("~p accepted ~p~n",[self(),S]),
-	supervisor:start_child(handler_pool,child_spec_handler(Callback,S)),
+	error_logger:info_msg("Connection receiver: accepted socket ~p~n",[S]),
+	supervisor:start_child(connection_handlers,child_spec_handler(Callback,S)),
 	connection_receiver(Callback,ListenSocket).
 
 init(_Args)->
@@ -34,36 +34,36 @@ child_spec_handler(Callback,Socket)->
 
 handler_thread(Callback,Socket)->
 	{ok,spawn_link(fun()->
-		io:format("Handler ~p start~n",[self()]),
+		error_logger:info_msg("Handler: ~p started~n",[self()]),
 		try
 			Callback(Socket)
 		catch
-			throw:X -> io:format("~p throw:~p~n",[self(),X]);
-			exit:X -> io:format("~p exit:~p~n",[self(),X]);
-			error:X ->io:format("~p error:~p~n",[self(),X])
+			throw:X ->error_logger:error_msg("Handler: ~p throw:~p~n",[self(),X]);
+			exit:X -> error_logger:error_msg("Handler: ~p exit:~p~n",[self(),X]);
+			error:X ->error_logger:error_msg("Handler: ~p error:~p~n",[self(),X])
 		after
 			gen_tcp:close(Socket)
 		end,
-		io:format("Handler ~p finish~n",[self()])
+		error_logger:info_msg("Handler: ~p finish~n",[self()])
 		end)}.
 
 send(S,Msg)->
-	io:format("SEND thread:~p socket:~p~ndata:~p~n",[self(),S,Msg]),
+	error_logger:info_msg("SEND thread:~p socket:~p~ndata:~p~n",[self(),S,Msg]),
 	gen_tcp:send(S,Msg).
 
 recv(S)->
 % "The Length argument is only meaningful when the socket is in raw mode"
 	{ok,Packet} = gen_tcp:recv(S,0,?read_timeout),
-	io:format("RECV thread:~p socket:~p~ndata:~p~n",[self(),S,Packet]),
+	error_logger:info_msg("RECV thread:~p socket:~p~ndata:~p~n",[self(),S,Packet]),
 	Packet.
 
 sendm(S,Msg)->
-	io:format("SENDM thread:~p socket:~p~nmsg:~p~n",[self(),S,Msg]),
+	error_logger:info_msg("SENDM thread:~p socket:~p~nmsg:~p~n",[self(),S,Msg]),
 	send(S,marshal(Msg)).
 
 receivem(S)->
 	R=unmarshal(recv(S)),
-	io:format("RECEIVEM thread:~p socket:~p~nmsg:~p~n",[self(),S,R]),
+	error_logger:info_msg("RECEIVEM thread:~p socket:~p~nmsg:~p~n",[self(),S,R]),
 	R.
 
 marshal(List) ->
