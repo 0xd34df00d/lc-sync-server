@@ -33,3 +33,5 @@ application:stop(syncserver).
 mnesia:dirty_delete({user,"chainname"})
 	Например, для удаления цепочки из SeekThru юзера test:
 mnesia:dirty_delete({test,"org.LeechCraft.SeekThru$osengines"})
+	Запуск нескольких приложений (sasl,mnesia,syncserver) сразу:
+lists:map(fun application:start/1,[sasl,mnesia,syncserver]).
