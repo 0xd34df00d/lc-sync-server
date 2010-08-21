@@ -234,18 +234,20 @@ get_filtered_records(Key,Conditions)->
 	filter_records(AllRecords,Conditions).
 
 filter_records(AllRecords,Conditions)->
-	% TODO: замена foldl(filter(..)) на filter(all(..))
-	lists:foldl(
-		fun({Offset,Pattern},Records)-> 
-			lists:filter(
-				fun(Record)->
-					is_list(Record) andalso 
-						Offset>0 andalso Offset=<length(Record) andalso 
-						Pattern=:=lists:sublist(Record,Offset,length(Pattern))
-				end,Records)
-		end,AllRecords,
-		%преобразование чисел из big endian (на входе могут быть числа или списки)
-		[{if is_list(Offset)->list2int(Offset);true->Offset end,P}||{Offset,P}<-list_to_tuples(Conditions)]).
+	%преобразование чисел из big endian (на входе могут быть числа или списки)
+	Patterns=[{if is_list(Offset)->list2int(Offset);true->Offset end,Pattern}
+		|| {Offset,Pattern} <-list_to_tuples(Conditions)],
+	lists:filter(
+		fun(Record)->
+			lists:all(
+				fun(Condition)->
+					contains_sublist(Record,Condition)
+				end,Conditions)
+		end,AllRecords).
+
+contains_sublist(Record,{Offset,Sublist})->
+	is_list(Record) andalso Offset>0 andalso Offset<=length(Sublist) andalso
+		Sublist =:= lists:sublist(Record,Offset,length(Sublist)).
 
 list_to_tuples([])->[];
 list_to_tuples([X,Y|XS])->
