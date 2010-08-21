@@ -2,31 +2,33 @@
 -export([start/2,stop/1,init/1]).
 -export([start_user_list/0]).
 -import(db_interface,[db_access/1]).
--import(net_interface,[sendm/2,receivem/1,list2int/1,int2list/1]).
+-import(net_interface,[list2int/1,int2list/1]).
+-import(net_interface,[sendm/2,receivem/1]).
 -behaviour(application).
 -behaviour(supervisor).
--define(ok_msg(),sendm(get(socket),["OK"])).
+
+-define(ok_text,"OK").
+-define(err_text,"ERR").
+
 -define(delta_prefix,"DELTA\x00\x00\x00").
 -define(delta_id_length,4).
 -define(delta_zero_id,[0,0,0,0]).
 
 % сообщения об ошибках и их коды.
 -define(err_unknown_command,
-	["ERR",[0,0,0,0],"Unknown command"]).
+	[?err_text,[0,0,0,0],"Unknown command"]).
 -define(err_user_registered,
-	["ERR",[0,0,0,1],"User is registered already"]).
+	[?err_text,[0,0,0,1],"User is registered already"]).
 -define(err_user_not_registered,
-	["ERR",[0,0,0,2],"User is not registered"]).
+	[?err_text,[0,0,0,2],"User is not registered"]).
 -define(err_password,
-	["ERR",[0,0,0,3],"Wrong password"]).
+	[?err_text,[0,0,0,3],"Wrong password"]).
 -define(err_already_connected,
-	["ERR",[0,0,0,4],"Already connected"]).
+	[?err_text,[0,0,0,4],"Already connected"]).
 -define(err_odd_parameters,
-	["ERR",[0,0,0,5],"Odd number of filter parameters"]).
+	[?err_text,[0,0,0,5],"Odd number of filter parameters"]).
 -define(err_wrong_delta_id,
-	["ERR",[0,0,0,6],"Wrong delta`s Id"]).
-
-% TODO: рефакторинг.
+	[?err_text,[0,0,0,6],"Wrong delta`s Id"]).
 
 start(_Type, StartArgs)->
 	supervisor:start_link(?MODULE,StartArgs).
@@ -40,7 +42,7 @@ init(Args) ->
 			{syncserver,start_user_list,[]},
 			transient,brutal_kill,worker,[]},
 		{connection_handler_pool,
-			% может {global,connection_handler_pool} ?
+			% может {global,connection_handlers} ?
 			{supervisor,start_link,[{local,connection_handlers},net_interface,Args]},
 			permanent,infinity,supervisor,[net_interface]},
 		{connection_receiver,
@@ -79,7 +81,7 @@ user_list(US)->
 
 login(Socket)->
 	error_logger:info_msg("Handler: ~p in LOGIN state~n",[self()]),
-	case net_interface:receivem(Socket) of
+	case receivem(Socket) of
 		["REGISTER",User,Password]->
 			register_user(Socket,User,Password);
 		["LOGIN",User,Password]->
@@ -89,7 +91,7 @@ login(Socket)->
 	
 running()->
 	error_logger:info_msg("Handler: ~p in RUNNING state~n",[self()]),
-	case net_interface:receivem(get(socket)) of
+	case receivem(get(socket)) of
 		["LISTKEYS"]->
 			list_keys(),
 			running();
@@ -129,7 +131,7 @@ running()->
 			max_delta(Key),
 			running();		
 		% обработка неизвестной команды
-		_ -> sendm(get(socket),?err_unknown_command),
+		_ -> send_message(?err_unknown_command),
 			running()
 	end.
 
@@ -142,13 +144,13 @@ register_user(Socket,User,Password)->
 		false ->
 			db_access({create_user,User,Password}),
 			error_logger:info_msg("Registration: user ~p was registered~n",[User]),
-			sendm(Socket,["OK"])
+			sendm(Socket,[?ok_text])
 	end.
 
 unregister_user()->
 	db_access({delete_user,User=get(user)}),
 	error_logger:info_msg("Unregistration: user ~p was unregistered~n",[User]),
-	?ok_msg().
+	ok_msg().
 
 do_login(S,User,Password)->
 	error_logger:info_msg("Login: trying to login as user ~p..~n",[User]),
@@ -165,7 +167,7 @@ do_login(S,User,Password)->
 			error_logger:info_msg("Login: user ~p is already connected~n",[User]),
 			sendm(S,?err_already_connected);
 		true ->
-			sendm(S,["OK"]),
+			sendm(S,[?ok_text]),
 			error_logger:info_msg("Login: ~p logined as user ~p~n",[self(),User]),
 			try
 				put(socket,S),
@@ -180,30 +182,59 @@ do_login(S,User,Password)->
 	end.
 
 disconnect(S) -> 
-	sendm(S,["OK"]).
+	sendm(S,[?ok_text]).
 
 list_keys()->
-	sendm(get(socket),["OK"|db_access({list_keys,get(user)})]).
+	send_message([?ok_text|db_access({list_keys,get(user)})]).
 
 put_value(Key,Value)->
 	ok=db_access({put,get(user),Key,Value}),
-	?ok_msg().
+	ok_msg().
 
 set_value_uniq(Key,Value)->
 	ok=db_access({set_uniq,get(user),Key,Value}),
-	?ok_msg().
+	ok_msg().
 
 get_values(Key,Conditions)->
 	if 
 		length(Conditions) rem 2 == 1 -> 
-			sendm(get(socket),?err_odd_parameters);
+			send_message(?err_odd_parameters);
 		true->
-			AllRecords=db_access({get,get(user),Key}),
-			FilteredRecords=filter_records(AllRecords,Conditions),
-			sendm(get(socket),["OK"|FilteredRecords])
+			FilteredRecords=get_filtered_records(Key,Conditions),
+			send_message([?ok_text|FilteredRecords])
 	end.
 
+% TODO: протестировать это
+select_values(_,_,_,Conditions) when length(Conditions) rem 2 == 1 -> 
+	send_message(?err_odd_parameters);
+select_values(Key,F,L,Conditions) ->
+	From=list2int(F),
+	Len=list2int(L),
+	FilteredRecords=get_filtered_records(Key,Conditions),
+	ShrinkedRecords=shrink_records(From,Len,FilteredRecords),
+	send_message([?ok_text|ShrinkedRecords]).
+
+erase_key(Key)->
+	db_access({erase_key,get(user),Key}),
+	ok_msg().
+
+erase_record(Key,Value)->
+	db_access({erase_record,get(user),Key,Value}),
+	ok_msg().
+
+set_password(Password)->
+	db_access({set_password,get(user),Password}),
+	ok_msg().
+
+get_all_records(Key)->
+	db_access({get,get(user),Key}).
+
+get_filtered_records(Key,Conditions)->
+	AllRecords=get_all_records(Key),
+	filter_records(AllRecords,Conditions).
+
 filter_records(AllRecords,Conditions)->
+	% TODO: замена foldl(filter(..)) на filter(all(..))
 	lists:foldl(
 		fun({Offset,Pattern},Records)-> 
 			lists:filter(
@@ -213,94 +244,94 @@ filter_records(AllRecords,Conditions)->
 						Pattern=:=lists:sublist(Record,Offset,length(Pattern))
 				end,Records)
 		end,AllRecords,
-		%преобразование чисел из big endian
-		[{if is_list(O)->list2int(O);true->O end,P}||{O,P}<-list_to_tuples(Conditions)]).
-
-% TODO: протестировать это
-select_values(Key,F,L,Conditions)->
-	From=list2int(F),
-	Len=list2int(L),
-	if 
-		length(Conditions) rem 2 == 1 -> 
-			sendm(get(socket),?err_odd_parameters);
-		true->
-			AllRecords=db_access({get,get(user),Key}),
-			FilteredRecords=filter_records(AllRecords,Conditions),
-			ShrinkedRecords=lists:foldl(
-				fun(R,Records)->
-					case From>0 andalso From=<length(R) of
-						true->
-							[lists:sublist(R,From,Len)|Records];
-						_->Records
-					end
-				end,[],FilteredRecords),
-			sendm(get(socket),["OK"|ShrinkedRecords])
-	end.
-
-get_filtered_records(Key,Conditions)->
-	AllRecords=db_access({get,get(user),Key}),
-	filter_records(AllRecords,Conditions).
+		%преобразование чисел из big endian (на входе могут быть числа или списки)
+		[{if is_list(Offset)->list2int(Offset);true->Offset end,P}||{Offset,P}<-list_to_tuples(Conditions)]).
 
 list_to_tuples([])->[];
 list_to_tuples([X,Y|XS])->
 	[{X,Y}|list_to_tuples(XS)].
 
-erase_key(Key)->
-	db_access({erase_key,get(user),Key}),
-	?ok_msg().
+shrink_records(From,Len,Records)->
+	lists:foldl(
+		fun(R,RS)->
+			case From>0 andalso From=<length(R) of
+				true->
+					[lists:sublist(R,From,Len)|RS];
+				_-> RS % если запись слишком коротка, то пропускаем её
+			end
+		end,[],Records).
 
-erase_record(Key,Value)->
-	db_access({erase_record,get(user),Key,Value}),
-	?ok_msg().
+% Отправка сообщения на сокет, который есть в словаре процесса.
+send_message(Msg)->
+	net_interface:sendm(get(socket),Msg).
 
-set_password(Password)->
-	db_access({set_password,get(user),Password}),
-	?ok_msg().
+% Чтение сообщения из сокета, который есть в словаре процесса.
+receive_message()->
+	net_interface:reveivem(get(socket)).
+
+% Отправка сообщения об успехе операции.
+ok_msg()->
+	send_message([?ok_text]).
 	
 % не-общие команды
 
 put_deltas(Key,StartId,Deltas)->
-	AllIds=lists:map(fun select_delta_id/1,all_deltas(Key)),
-	error_logger:info_msg("Handler in ~p: put_delta.allIds: ~p~n",[self(),AllIds]),
+	MaxId=max_delta_id(all_deltas(Key)),
+	error_logger:info_msg("put_deltas: ~p: key '~p': MaxId=~p StartId=~p",
+		[self(),Key,MaxId,StartId]),
 	% по идее допустимо сравнение id'ов без преобразования в int().
-	case lists:all(fun(X)-> X<StartId end,AllIds) of
-		true->
+	if
+		MaxId<StartId ->
 			lists:foreach(
 				fun(V)-> 
-					db_access({put,get(user),Key,V})
+					ok=db_access({put,get(user),Key,V})
 				end,form_deltas(StartId,Deltas)),
-			?ok_msg();
-		_->
-			sendm(get(socket),?err_wrong_delta_id)
+				error_logger:info_msg(
+					"put_deltas: ~p: put ~p deltas with key '~p': success",
+					[self(),length(Deltas),Key]),
+			ok_msg();
+		true->
+			error_logger:info_msg("put_deltas: ~p: key '~p': wrong delta id",
+				[self(),Key]),
+			send_message(?err_wrong_delta_id)
 	end.
+	
+get_delta(Key,StartId)->
+	FilteredById=lists:filter(
+			fun(X)->
+				select_delta_id(X)>StartId
+			end,all_deltas(Key)),
+	Sorted=lists:sort(
+		fun(A,B)->
+			select_delta_id(A)=<select_delta_id(B)
+		end,FilteredById),
+	Deltas=lists:map(fun select_delta_data/1,Sorted),
+	send_message([?ok_text|Deltas]).
+
+max_delta(Key)->
+	MaxId=max_delta_id(all_deltas(Key)),
+	send_message([?ok_text, MaxId]).
+
+all_deltas(Key)->
+	get_filtered_records(Key,[1,?delta_prefix]).
+
+select_delta_data(Delta)->
+	lists:nthtail(length(?delta_prefix)+?delta_id_length,Delta).
+
+select_delta_id(Delta)->
+	lists:sublist(Delta,1+length(?delta_prefix),?delta_id_length).
 
 form_deltas(StartId,Deltas)->
 	IdInt=list2int(StartId),
 	IDs=[int2list(I)||I<-lists:seq(IdInt,IdInt+length(Deltas)-1)],
 	[?delta_prefix++Id++Delta||{Id,Delta}<-lists:zip(IDs,Deltas)].
-	
-get_delta(Key,StartId)->
-	All=get_filtered_records(Key,[1,?delta_prefix]),
-	Filtered=lists:filter(
-			fun(X)->
-				select_delta_id(X)>StartId
-			end,All),
-	Sorted=lists:sort(
-		fun(A,B)->
-			select_delta_id(A)=<select_delta_id(B)
-		end,Filtered),
-	Deltas=lists:map(fun select_delta_data/1,Sorted),
-	sendm(get(socket),["OK"|Deltas]).
 
-all_deltas(Key)->get_filtered_records(Key,[1,?delta_prefix]).
-select_delta_data(Delta)->
-	lists:nthtail(length(?delta_prefix)+?delta_id_length,Delta).
-select_delta_id(Delta)->
-	lists:sublist(Delta,1+length(?delta_prefix),?delta_id_length).
-
-max_delta(Key)->
-	AllIds=lists:map(fun select_delta_id/1,all_deltas(Key)),
-	R = if AllIds =/= [] -> lists:max(AllIds); true -> ?delta_zero_id end,
-	sendm(get(socket),["OK", R]).
-
+max_delta_id(Deltas)->
+	case lists:map(fun select_delta_id/1,Deltas) of
+		[] -> 
+			?delta_zero_id;
+		AllIds -> 
+			% по идее допустимо сравнение id'ов без преобразования в int().
+			lists:max(AllIds)
+	end.
 
