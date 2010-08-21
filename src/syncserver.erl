@@ -242,11 +242,11 @@ filter_records(AllRecords,Conditions)->
 			lists:all(
 				fun(Condition)->
 					contains_sublist(Record,Condition)
-				end,Conditions)
+				end,Patterns)
 		end,AllRecords).
 
 contains_sublist(Record,{Offset,Sublist})->
-	is_list(Record) andalso Offset>0 andalso Offset<=length(Sublist) andalso
+	is_list(Record) andalso Offset>0 andalso Offset =< length(Sublist) andalso
 		Sublist =:= lists:sublist(Record,Offset,length(Sublist)).
 
 list_to_tuples([])->[];
