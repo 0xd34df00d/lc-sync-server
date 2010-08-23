@@ -1,0 +1,6 @@
+{release, {"syncserver","0.1.0"},{erts,"5.7.2"},
+	[	{kernel,"2.13.2"},
+		{stdlib,"1.16.2"},
+		{syncserver,"0.1.0"},
+		{mnesia,"4.4.10"},
+		{sasl,"2.1.6"}	]}.
