@@ -86,10 +86,9 @@ lengths(XS)->
 	{V,Rest}=split(4,XS),
 	[list2int(V)|lengths(Rest)].
 
-list2int(YS)->
-	lists:foldl(fun(X,SM)-> SM * 16#100 + X rem 16#100 end,0,YS).
-
-int2list(V)->
-	[(V bsr Sh) band 255||Sh<-[24,16,8,0]].
-
+list2int(L)->
+	<<I:32/integer>> =list_to_binary(L), I.
+	
+int2list(I)->
+	binary_to_list(<<I:32/integer>>).
 
