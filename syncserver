@@ -1,0 +1,30 @@
+#!/bin/sh
+
+ERL_PATH=ebin
+
+START_SCRIPT='lists:map(fun application:start/1,[sasl,mnesia,syncserver]).'
+
+CONFIG=syncserver.config
+
+SNAME=syncserver
+
+ERL_OPTIONS="-noshell -pa $ERL_PATH -sname $SNAME -config $CONFIG -noshell "
+ERL_OPTIONS_SHELL="-pa $ERL_PATH -sname $SNAME"
+
+case $1 in
+	start) 
+	    exec erl ${ERL_OPTIONS} -config $CONFIG -eval "$START_SCRIPT"
+	;;
+	start-shell) 
+	    exec erl ${ERL_OPTIONS_SHELL} -eval "$START_SCRIPT"
+	;;
+	stop)
+	    echo "Not implemented, kill the process manually"
+	;;
+	*)
+	    echo 'Usage:'
+	    echo ' ./syncserver start'
+	    echo ' ./syncserver start-shell'
+	    echo ' ./syncserver stop'
+	;;
+esac
