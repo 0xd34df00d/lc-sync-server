@@ -1,0 +1,6 @@
+#!/usr/bin/env escript
+%%! -config syncserver.config -pa ebin
+main([])->
+	R=util:create_db(),
+	io:format("Creating database: ~p~n",[R]).
+	

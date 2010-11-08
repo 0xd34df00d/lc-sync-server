@@ -17,3 +17,10 @@ uninstall:
 
 run:
 	./syncserver start
+
+stop:
+	./syncserver stop
+
+db:	build
+	./make-db
+

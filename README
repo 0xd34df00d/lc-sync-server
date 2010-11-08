@@ -11,27 +11,16 @@ SyncServer - cервер хранения настроек приложений,
 
 Сборка.
 	Для сборки выполните команды (из каталога lc-sync-server):
-erl -make
-	Запустите Erlang-систему:
-erl -pa ebin
-	Инициализируйте базу данных:
-util:create_db().
-	Здесь можно выйти из erl.
+make
+	Инициализируйте базу данных (достаточно сделать это 1 раз):
+make db.
 	
 Запуск и останов.
-	Для запуска Erlang-системы выполните:
-erl -pa ebin -config syncserver
-	Запуск сервера:
-application:start(mnesia).
-application:start(syncserver).
-	Можно также запустить приложение sasl, чтобы видеть логи супервизоров.
+	Для запуска Syncserver'а выполните:
+./syncserver start
+	Для запуска с интерактивной оболочкой нужно выполнить:
+./syncserver start-shell
 	Останов сервера:
-application:stop(syncserver).
+./syncserver stop
 
-Разные команды:
-	Удаление цепочки:
-mnesia:dirty_delete({user,"chainname"})
-	Например, для удаления цепочки из SeekThru юзера test:
-mnesia:dirty_delete({test,"org.LeechCraft.SeekThru$osengines"})
-	Запуск нескольких приложений (sasl,mnesia,syncserver) сразу:
-lists:map(fun application:start/1,[sasl,mnesia,syncserver]).
+

@@ -2,13 +2,36 @@
 
 ERL_PATH=ebin
 
-START_SCRIPT='lists:map(fun application:start/1,[sasl,mnesia,syncserver]).'
-
 CONFIG=syncserver.config
 
-SNAME=syncserver
+SNAME="syncserver@$(uname -n)"
 
-ERL_OPTIONS="-noshell -pa $ERL_PATH -sname $SNAME -config $CONFIG -noshell "
+START_SCRIPT="
+	Node='$SNAME',
+	io:format(\"Starting Syncserver on node ~p..~n\",[Node]),
+	lists:foreach(fun(A)->
+			io:format(\"Starting application ~p.. \",[A]),
+			SR=application:start(A),
+			io:format(\"~p~n\",[SR]),
+			ok=SR
+			end, [sasl,mnesia,syncserver]),
+	io:format(\"Syncserver started~n\",[])."
+
+STOP_SCRIPT="
+	Node='$SNAME',
+	io:format(\"Stopping Syncserver on node ~p..~n\",[Node]),
+	lists:foreach(fun(A)->
+			io:format(\"Stopping application ~p.. \",[A]),
+			SR=rpc:call(Node,application,stop,[A]),
+			io:format(\"~p~n\",[SR])
+			end, [syncserver,mnesia,sasl]),
+	io:format(\"Shutdown node ~p.. \",[Node]),
+	R=rpc:call(Node,init,stop,[]),
+	io:format(\"~p~n\",[R]),
+	io:format(\"Shutdown this node~n\",[]),
+	init:stop()."
+
+ERL_OPTIONS="-detached  -pa $ERL_PATH -sname $SNAME -config $CONFIG -noshell "
 ERL_OPTIONS_SHELL="-pa $ERL_PATH -sname $SNAME"
 
 case $1 in
@@ -19,7 +42,7 @@ case $1 in
 	    exec erl ${ERL_OPTIONS_SHELL} -eval "$START_SCRIPT"
 	;;
 	stop)
-	    echo "Not implemented, kill the process manually"
+	    exec erl -noshell -sname 'stop-syncserver' -eval "$STOP_SCRIPT"
 	;;
 	*)
 	    echo 'Usage:'
