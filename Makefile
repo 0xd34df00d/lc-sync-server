@@ -24,3 +24,7 @@ stop:
 db:	build
 	./make-db
 
+cookie:
+	cat /dev/urandom|head -c32|md5sum|head -c32 > cookie
+	chmod 400 cookie
+

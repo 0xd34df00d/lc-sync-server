@@ -33,8 +33,14 @@ STOP_SCRIPT="
 	io:format(\"Shutdown this node~n\",[]),
 	init:stop()."
 
-ERL_OPTIONS="-detached  -pa $ERL_PATH -sname $SNAME -config $CONFIG -noshell "
-ERL_OPTIONS_SHELL="-pa $ERL_PATH -sname $SNAME"
+COOKIE=$(cat cookie 2>/dev/null)
+
+COOKIE_OPT="-setcookie '$COOKIE'"
+test -z $COOKIE && COOKIE_OPT=
+
+ERL_OPTIONS="-detached -pa $ERL_PATH -sname $SNAME -config $CONFIG $COOKIE_OPT"
+ERL_OPTIONS_SHELL="-pa $ERL_PATH -sname $SNAME -config $CONFIG $COOKIE_OPT"
+ERL_OPTIONS_STOP="-noshell -sname stop-syncserver -config $CONFIG $COOKIE_OPT"
 
 case $1 in
 	start) 
@@ -44,7 +50,7 @@ case $1 in
 	    exec erl ${ERL_OPTIONS_SHELL} -eval "$START_SCRIPT"
 	;;
 	stop)
-	    exec erl -noshell -sname 'stop-syncserver' -eval "$STOP_SCRIPT"
+	    exec erl ${ERL_OPTIONS_STOP} -eval "$STOP_SCRIPT"
 	;;
 	*)
 	    echo 'Usage:'
