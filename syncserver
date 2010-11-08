@@ -6,6 +6,8 @@ CONFIG=syncserver.config
 
 SNAME="syncserver@$(uname -n)"
 
+APPLIST='[sasl,mnesia,syncserver]'
+
 START_SCRIPT="
 	Node='$SNAME',
 	io:format(\"Starting Syncserver on node ~p..~n\",[Node]),
@@ -14,7 +16,7 @@ START_SCRIPT="
 			SR=application:start(A),
 			io:format(\"~p~n\",[SR]),
 			ok=SR
-			end, [sasl,mnesia,syncserver]),
+			end, $APPLIST),
 	io:format(\"Syncserver started~n\",[])."
 
 STOP_SCRIPT="
@@ -24,7 +26,7 @@ STOP_SCRIPT="
 			io:format(\"Stopping application ~p.. \",[A]),
 			SR=rpc:call(Node,application,stop,[A]),
 			io:format(\"~p~n\",[SR])
-			end, [syncserver,mnesia,sasl]),
+			end, lists:reverse($APPLIST)),
 	io:format(\"Shutdown node ~p.. \",[Node]),
 	R=rpc:call(Node,init,stop,[]),
 	io:format(\"~p~n\",[R]),
